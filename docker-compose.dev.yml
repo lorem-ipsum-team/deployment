@@ -51,7 +51,6 @@ services:
       retries: 3
     labels:
       - traefik.enable=true
-      - traefik.docker.network=default
       - traefik.http.routers.minio.rule=PathPrefix(`/mybucket`)
       - traefik.http.routers.minio.entrypoints=web
       - traefik.http.services.minio.loadbalancer.server.port=9000
@@ -155,7 +154,6 @@ services:
       start_period: 5s
     labels:
       - traefik.enable=true
-      - traefik.docker.network=default
       - traefik.http.routers.keycloak.rule=PathPrefix(`/realms`) || PathPrefix(`/resources`)
       - traefik.http.routers.keycloak.entrypoints=web
       - traefik.http.services.keycloak.loadbalancer.server.port=8080
@@ -196,7 +194,6 @@ services:
       - REDIRECT_URI=${AUTHPROXY_REDIRECT_URI}
     labels:
       - traefik.enable=true
-      - traefik.docker.network=default
       - traefik.http.routers.auth.rule=PathPrefix(`/auth`)
       - traefik.http.routers.auth.entrypoints=web
       - traefik.http.services.auth.loadbalancer.server.port=8000
@@ -290,7 +287,6 @@ services:
       - AUTH_SCHEME_NAME=${CUPID_AUTH_SCHEME_NAME}
     labels:
       - traefik.enable=true
-      - traefik.docker.network=default
       - traefik.http.routers.recommendapi.rule=PathPrefix(`/api/v1/recommend`)
       - traefik.http.routers.recommendapi.entrypoints=web
       - traefik.http.services.recommendapi.loadbalancer.server.port=8000
@@ -324,7 +320,6 @@ services:
       - RABBIT_URL=${CUPID_RABBITMQ_URL}
     labels:
       - traefik.enable=true
-      - traefik.docker.network=default
       - traefik.http.routers.swipe.rule=PathPrefix(`/swipes`) || PathPrefix(`/matches`)
       - traefik.http.routers.swipe.entrypoints=web
       - traefik.http.services.swipe.loadbalancer.server.port=8080

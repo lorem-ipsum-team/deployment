@@ -12,7 +12,7 @@ api:
 providers:
   docker:
     exposedByDefault: false
-    network: default
+    network: deployment_default
 
 metrics:
   prometheus: {}
