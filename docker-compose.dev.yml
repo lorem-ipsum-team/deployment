@@ -1,0 +1,351 @@
+services:
+  gateway:
+    image: traefik:${TRAEFIK_VERSION}
+    command:
+      - --providers.docker
+      - --entrypoints.web.address=:80
+      - --api.insecure=true
+      - --log.level=DEBUG
+    ports:
+      - "80:80"
+      - "8080:8080" # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+    networks:
+      - default
+
+  rabbitmq:
+    image: rabbitmq:${RABBITMQ_VERSION}
+    networks:
+      - rabbitmq
+    ports:
+      - "15672:15672"
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    networks:
+      - default
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=default
+      - traefik.http.routers.minio.rule=PathPrefix(`/mybucket`)
+      - traefik.http.routers.minio.entrypoints=web
+      - traefik.http.services.minio.loadbalancer.server.port=9000
+
+  kc-database:
+    image: postgres:${KEYCLOAK_DB_VERSION}
+    environment:
+      - POSTGRES_DB=${KEYCLOAK_DB_NAME}
+      - POSTGRES_USER=${KEYCLOAK_DB_USER}
+      - POSTGRES_PASSWORD=${KEYCLOAK_DB_PASS}
+    volumes:
+      - kc-data:/var/lib/postgresql/data
+    networks:
+      - keycloak
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER" ]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  cupid-database:
+    build:
+      context: cupid-database
+      dockerfile: Dockerfile
+      args:
+        - CUPID_DATABASE_VERSION=${CUPID_DB_VERSION}
+    environment:
+      - POSTGRES_DB=${CUPID_DB_NAME}
+      - POSTGRES_USER=${CUPID_DB_USER}
+      - POSTGRES_PASSWORD=${CUPID_DB_PASSWORD}
+    volumes:
+      - cupid-data:/var/lib/postgresql/data
+    networks:
+      - cupid
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER" ]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    platform: linux/amd64
+
+  pa-database:
+    image: postgres:${PERSONAL_ACCOUNT_DB_VERSION}
+    environment:
+      - POSTGRES_DB=${PERSONAL_ACCOUNT_DB_NAME}
+      - POSTGRES_USER=${PERSONAL_ACCOUNT_DB_USER}
+      - POSTGRES_PASSWORD=${PERSONAL_ACCOUNT_DB_PASS}
+    volumes:
+      - personal-account-data:/var/lib/postgresql/data
+    networks:
+      - personal-account
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER" ]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  swipe-database:
+    image: postgres:${SWIPE_DB_VERSION}
+    environment:
+      - POSTGRES_DB=${SWIPE_DB_NAME}
+      - POSTGRES_USER=${SWIPE_DB_USER}
+      - POSTGRES_PASSWORD=${SWIPE_DB_PASS}
+    volumes:
+      - swipe-data:/var/lib/postgresql/data
+    networks:
+      - swipe
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER" ]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}
+    command: [ "start-dev" ]
+    environment:
+      - KC_HEALTH_ENABLED=true
+      - KC_DB=postgres
+      - KC_DB_URL=${KEYCLOAK_DB_URL}
+      - KC_DB_USERNAME=${KEYCLOAK_DB_USER}
+      - KC_DB_PASSWORD=${KEYCLOAK_DB_PASS}
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USERNAME}
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+      - KC_HOSTNAME_STRICT=false
+    networks:
+      - default
+      - keycloak
+    depends_on:
+      kc-database:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 1
+      start_period: 5s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=default
+      - traefik.http.routers.keycloak.rule=PathPrefix(`/realms`) || PathPrefix(`/resources`)
+      - traefik.http.routers.keycloak.entrypoints=web
+      - traefik.http.services.keycloak.loadbalancer.server.port=8080
+
+  minio_migration:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c " mc alias set local http://minio:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD; mc mb -p local/mybucket; mc admin policy create local myfullpolicy /tmp/myfullpolicy.json; mc admin user add local myuser mypassword; mc admin policy attach local myfullpolicy --user myuser; mc anonymous set download local/mybucket/pub; exit 0; "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ./miniopolicy.json:/tmp/myfullpolicy.json:ro
+    networks:
+      - default
+
+  authproxy:
+    image: ghcr.io/lorem-ipsum-team/authproxy-middleware:${AUTHPROXY_VERSION}
+    networks:
+      - default
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8000/health" ]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 10s
+    environment:
+      - KEYCLOAK_SERVER_URL=${AUTHPROXY_KEYCLOAK_SERVER_URL}
+      - KEYCLOAK_REALM=${AUTHPROXY_KEYCLOAK_REALM}
+      - KEYCLOAK_CLIENT_ID=${AUTHPROXY_KEYCLOAK_CLIENT_ID}
+      - KEYCLOAK_CLIENT_SECRET_KEY=${AUTHPROXY_KEYCLOAK_CLIENT_SECRET}
+      - REDIRECT_URI=${AUTHPROXY_REDIRECT_URI}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=default
+      - traefik.http.routers.auth.rule=PathPrefix(`/auth`)
+      - traefik.http.routers.auth.entrypoints=web
+      - traefik.http.services.auth.loadbalancer.server.port=8000
+    platform: linux/amd64
+
+  cupid-migration:
+    image: ghcr.io/lorem-ipsum-team/photo-anlyzer-migration:${CUPID_MIGRATION_VERSION}
+    networks:
+      - cupid
+    depends_on:
+      cupid-database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${CUPID_DB_URL}
+    platform: linux/amd64
+
+  cupid-photo:
+    image: ghcr.io/lorem-ipsum-team/photo-anlyzer-photo:${CUPID_PHOTO_VERSION}
+    networks:
+      - cupid
+      - rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cupid-database:
+        condition: service_healthy
+      cupid-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 1
+      start_period: 5s
+    environment:
+      RABBITMQ_URL: ${CUPID_RABBITMQ_URL}
+      PHOTO_QUEUE_NAME: ${CUPID_PHOTO_QUEUE_NAME}
+      DATABASE_URL: ${CUPID_DB_URL}
+    platform: linux/amd64
+
+  cupid-tags:
+    image: ghcr.io/lorem-ipsum-team/photo-anlyzer-text:${CUPID_TEXT_VERSION}
+    networks:
+      - cupid
+      - rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cupid-database:
+        condition: service_healthy
+      cupid-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 1
+      start_period: 5s
+    environment:
+      RABBITMQ_URL: ${CUPID_RABBITMQ_URL}
+      DESCRIPTION_QUEUE_NAME: ${CUPID_TAGS_QUEUE_NAME}
+      DATABASE_URL: ${CUPID_DB_URL}
+    platform: linux/amd64
+
+  cupid-recommend-api:
+    image: ghcr.io/lorem-ipsum-team/cupid:${CUPID_RECOMMEND_API_VERSION}
+    networks:
+      - default
+      - cupid
+    depends_on:
+      cupid-database:
+        condition: service_healthy
+      cupid-migration:
+        condition: service_completed_successfully
+      authproxy:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8000/health" ]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 10s
+    environment:
+      - API_PREFIX=${CUPID_API_PREFIX}
+      - HEALTH_PREFIX=${CUPID_HEALTH_PREFIX}
+      - DATABASE_URL=${CUPID_DB_URL}
+      - ST_DWITHIN_KM=${CUPID_ST_DWITHIN_KM}
+      - AUTHORIZATION_URL=${CUPID_AUTHORIZATION_URL}
+      - TOKEN_URL=${CUPID_TOKEN_URL}
+      - REFRESH_URL=${CUPID_REFRESH_URL}
+      - AUTH_SCHEME_NAME=${CUPID_AUTH_SCHEME_NAME}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=default
+      - traefik.http.routers.recommendapi.rule=PathPrefix(`/api/v1/recommend`)
+      - traefik.http.routers.recommendapi.entrypoints=web
+      - traefik.http.services.recommendapi.loadbalancer.server.port=8000
+      - traefik.http.routers.recommendapi.middlewares=oauth
+      - traefik.http.middlewares.oauth.forwardauth.address=http://authproxy:8000/
+      - traefik.http.middlewares.oauth.forwardauth.trustForwardHeader=true
+    platform: linux/amd64
+
+  swipe:
+    image: ghcr.io/lorem-ipsum-team/swipe:${SWIPE_VERSION}
+    networks:
+      - default
+      - swipe
+      - rabbitmq
+    depends_on:
+      swipe-database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/healthy" ]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 10s
+    environment:
+      - LOG_LEVEL=${SWIPE_LOG_LEVEL}
+      - LOG_FORMAT=${SWIPE_LOG_FORMAT}
+      - DB_URL=${SWIPE_DB_URL}
+      - LISTEN_ADDR=0.0.0.0:8080
+      - RABBIT_URL=${CUPID_RABBITMQ_URL}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=default
+      - traefik.http.routers.swipe.rule=PathPrefix(`/swipes`) || PathPrefix(`/matches`)
+      - traefik.http.routers.swipe.entrypoints=web
+      - traefik.http.services.swipe.loadbalancer.server.port=8080
+      - traefik.http.routers.swipe.middlewares=oauth
+      - traefik.http.middlewares.oauth.forwardauth.address=http://authproxy:8000/
+      - traefik.http.middlewares.oauth.forwardauth.trustForwardHeader=true
+    platform: linux/amd64
+
+volumes:
+  kc-data:
+  personal-account-data:
+  cupid-data:
+  rabbitmq-data:
+  minio-data:
+  swipe-data:
+
+
+networks:
+  keycloak:
+  default:
+  rabbitmq:
+  cupid:
+  personal-account:
+  swipe:
