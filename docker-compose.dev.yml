@@ -42,6 +42,9 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     networks:
       - default
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -143,6 +146,8 @@ services:
     networks:
       - default
       - keycloak
+    ports:
+      - "18880:8080"
     depends_on:
       kc-database:
         condition: service_healthy
@@ -258,6 +263,54 @@ services:
       DATABASE_URL: ${CUPID_DB_URL}
     platform: linux/amd64
 
+  cupid-user:
+    image: ghcr.io/lorem-ipsum-team/photo-anlyzer-user:${CUPID_USER_VERSION}
+    networks:
+      - cupid
+      - rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cupid-database:
+        condition: service_healthy
+      cupid-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 1
+      start_period: 5s
+    environment:
+      RABBITMQ_URL: ${CUPID_RABBITMQ_URL}
+      USERS_QUEUE_NAME: ${CUPID_USER_QUEUE_NAME}
+      DATABASE_URL: ${CUPID_DB_URL}
+    platform: linux/amd64
+
+  cupid-swipe:
+    image: ghcr.io/lorem-ipsum-team/photo-anlyzer-swipe:${CUPID_SWIPE_VERSION}
+    networks:
+      - cupid
+      - rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cupid-database:
+        condition: service_healthy
+      cupid-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "true" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 1
+      start_period: 5s
+    environment:
+      RABBITMQ_URL: ${CUPID_RABBITMQ_URL}
+      SWIPES_QUEUE_NAME: ${CUPID_SWIPE_QUEUE_NAME}
+      DATABASE_URL: ${CUPID_DB_URL}
+    platform: linux/amd64
+
   cupid-recommend-api:
     image: ghcr.io/lorem-ipsum-team/cupid:${CUPID_RECOMMEND_API_VERSION}
     networks:
@@ -324,6 +377,50 @@ services:
       - traefik.http.routers.swipe.entrypoints=web
       - traefik.http.services.swipe.loadbalancer.server.port=8080
       - traefik.http.routers.swipe.middlewares=oauth
+      - traefik.http.middlewares.oauth.forwardauth.address=http://authproxy:8000/
+      - traefik.http.middlewares.oauth.forwardauth.trustForwardHeader=true
+    platform: linux/amd64
+
+  personal-account:
+    image: ghcr.io/lorem-ipsum-team/personal-account:${PERSONAL_ACCOUNT_VERSION}
+    networks:
+      - default
+      - personal-account
+      - rabbitmq
+    depends_on:
+      pa-database:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/healthy" ]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 10s
+    environment:
+      - MINIO_ENDPOINT=${PERSONAL_ACCOUNT_MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${PERSONAL_ACCOUNT_MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${PERSONAL_ACCOUNT_MINIO_SECRET_KEY}
+      - MINIO_BUCKET=mybucket
+      - MINIO_USE_SSL=false
+      - DB_HOST=pa-database
+      - DB_PORT=5432
+      - DB_USER=${PERSONAL_ACCOUNT_DB_USER}
+      - DB_PASSWORD=${PERSONAL_ACCOUNT_DB_PASS}
+      - DB_NAME=${PERSONAL_ACCOUNT_DB_NAME}
+      - RABBIT_URL=${CUPID_RABBITMQ_URL}
+      - RABBIT_PHOTO_NAME=${CUPID_PHOTO_QUEUE_NAME}
+      - RABBIT_TAGS_NAME=${CUPID_TAGS_QUEUE_NAME}
+      - RABBIT_ANKET_NAME=${CUPID_TAGS_QUEUE_NAME}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.personalaccount.rule=PathPrefix(`/users`) || PathPrefix(`/photos`)
+      - traefik.http.routers.personalaccount.entrypoints=web
+      - traefik.http.services.personalaccount.loadbalancer.server.port=8080
+      - traefik.http.routers.personalaccount.middlewares=oauth
       - traefik.http.middlewares.oauth.forwardauth.address=http://authproxy:8000/
       - traefik.http.middlewares.oauth.forwardauth.trustForwardHeader=true
     platform: linux/amd64
