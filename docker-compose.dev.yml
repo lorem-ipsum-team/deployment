@@ -131,37 +131,37 @@ services:
       retries: 5
       start_period: 10s
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}
-    command: [ "start-dev" ]
-    environment:
-      - KC_HEALTH_ENABLED=true
-      - KC_DB=postgres
-      - KC_DB_URL=${KEYCLOAK_DB_URL}
-      - KC_DB_USERNAME=${KEYCLOAK_DB_USER}
-      - KC_DB_PASSWORD=${KEYCLOAK_DB_PASS}
-      - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USERNAME}
-      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
-      - KC_HOSTNAME_STRICT=false
-    networks:
-      - default
-      - keycloak
-    ports:
-      - "18880:8080"
-    depends_on:
-      kc-database:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "true" ]
-      interval: 1m30s
-      timeout: 30s
-      retries: 1
-      start_period: 5s
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.keycloak.rule=PathPrefix(`/realms`) || PathPrefix(`/resources`)
-      - traefik.http.routers.keycloak.entrypoints=web
-      - traefik.http.services.keycloak.loadbalancer.server.port=8080
+  # keycloak:
+  #   image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}
+  #   command: [ "start-dev" ]
+  #   environment:
+  #     - KC_HEALTH_ENABLED=true
+  #     - KC_DB=postgres
+  #     - KC_DB_URL=${KEYCLOAK_DB_URL}
+  #     - KC_DB_USERNAME=${KEYCLOAK_DB_USER}
+  #     - KC_DB_PASSWORD=${KEYCLOAK_DB_PASS}
+  #     - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USERNAME}
+  #     - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+  #     - KC_HOSTNAME_STRICT=false
+  #   networks:
+  #     - default
+  #     - keycloak
+  #   ports:
+  #     - "18880:8080"
+  #   depends_on:
+  #     kc-database:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "true" ]
+  #     interval: 1m30s
+  #     timeout: 30s
+  #     retries: 1
+  #     start_period: 5s
+  #   labels:
+  #     - traefik.enable=true
+  #     - traefik.http.routers.keycloak.rule=PathPrefix(`/realms`) || PathPrefix(`/resources`)
+  #     - traefik.http.routers.keycloak.entrypoints=web
+  #     - traefik.http.services.keycloak.loadbalancer.server.port=8080
 
   minio_migration:
     image: minio/mc
@@ -376,9 +376,9 @@ services:
       - traefik.http.routers.swipe.rule=PathPrefix(`/swipes`) || PathPrefix(`/matches`)
       - traefik.http.routers.swipe.entrypoints=web
       - traefik.http.services.swipe.loadbalancer.server.port=8080
-      - traefik.http.routers.swipe.middlewares=oauth
-      - traefik.http.middlewares.oauth.forwardauth.address=http://authproxy:8000/
-      - traefik.http.middlewares.oauth.forwardauth.trustForwardHeader=true
+      # - traefik.http.routers.swipe.middlewares=oauth
+      # - traefik.http.middlewares.oauth.forwardauth.address=http://authproxy:8000/
+      # - traefik.http.middlewares.oauth.forwardauth.trustForwardHeader=true
     platform: linux/amd64
 
   personal-account:
@@ -416,7 +416,7 @@ services:
       - RABBIT_URL=${CUPID_RABBITMQ_URL}
       - RABBIT_PHOTO_NAME=${CUPID_PHOTO_QUEUE_NAME}
       - RABBIT_TAGS_NAME=${CUPID_TAGS_QUEUE_NAME}
-      - RABBIT_ANKET_NAME=${CUPID_TAGS_QUEUE_NAME}
+      - RABBIT_ANKET_NAME=${CUPID_USER_QUEUE_NAME}
     labels:
       - traefik.enable=true
       - traefik.http.routers.personalaccount.rule=PathPrefix(`/users`) || PathPrefix(`/photos`)
