@@ -403,6 +403,7 @@ services:
       start_period: 10s
     environment:
       - DB_URL=${GEODE_DB_URL}
+      - LISTEN_ADDR=0.0.0.0:8080
     labels:
       - traefik.enable=true
       - traefik.http.routers.geode.rule=PathPrefix(`/geo`)
