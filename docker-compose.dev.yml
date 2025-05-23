@@ -338,7 +338,6 @@ services:
       - TOKEN_URL=${CUPID_TOKEN_URL}
       - REFRESH_URL=${CUPID_REFRESH_URL}
       - AUTH_SCHEME_NAME=${CUPID_AUTH_SCHEME_NAME}
-      - PROFILING=true
       - POOL_SIZE=20
       - MAX_OVERFLOW=30
     labels:
