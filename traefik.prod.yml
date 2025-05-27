@@ -1,0 +1,37 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+
+  websecure:
+    address: ":443"
+    http:
+      tls: {}
+
+log:
+  level: DEBUG
+
+api:
+  dashboard: true
+  insecure: true
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: deployment_default
+
+metrics:
+  prometheus: {}
+
+tls:
+  certificates:
+    - certFile: /etc/cert/cert.pem
+      keyFile: /etc/cert/private_key.pem
