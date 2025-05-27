@@ -6,7 +6,7 @@ services:
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --api.insecure=true
-      - --log.level=DEBUG
+      - --log.level=ERROR
     ports:
       - "80:80"
       - "443:443"
