@@ -27,6 +27,8 @@ providers:
   docker:
     exposedByDefault: false
     network: deployment_default
+  file:
+    filename: /etc/traefik/traefik.yml
 
 metrics:
   prometheus: {}
